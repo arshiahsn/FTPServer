@@ -92,7 +92,19 @@ public class WebServer extends Thread {
 
 		}
 
-		public void sendHTTPResp(String request) throws IOException {
+		public boolean validateReq(String req){
+			String lines[] = req.split("\n");
+			if(!lines[0].contains("GET /") || !lines[0].contains("HTTP/"))
+				return false;
+			if(!lines[1].contains("Host:"))
+				return false;
+			if(!lines[2].contains("Connection:"))
+				return false;
+
+			return true;
+		}
+
+		public void sendHTTPResp(String request)  {
 			String lines[] = request.split("\n");
 			System.out.println(lines[0]);
 			String filename = lines[0].split(" ")[1];
@@ -132,12 +144,38 @@ public class WebServer extends Thread {
 				} catch (IOException e) {
 					System.out.println(e);
 				}
-			} catch(FileNotFoundException | UnsupportedEncodingException e) {
-				response = response.replace("200", "404"); //File not found
-				//byte [] httpResponse = response.getBytes("US-ASCII");
-				this.output.writeBytes(response);
-				this.output.flush();
-			} catch (IOException e) {
+			} catch(FileNotFoundException e) {
+				System.out.println("\n----Start of Response Frame----");
+				response = "HTTP/1.1 404" + CRLF;
+				response = response + "Server: Multi-Threaded Web Server/1.0" + CRLF;
+				response = response + "Connection: close" + CRLF;
+				response = response + CRLF;
+				System.out.print(response);
+				System.out.println("----End of Response Frame----");
+				try {
+					this.output.writeBytes(response);
+					this.output.flush();
+				} catch (IOException ee) {
+					ee.printStackTrace();
+				}
+
+			}
+			catch(UnsupportedEncodingException e){
+				System.out.println("\n----Start of Response Frame----");
+				response = "HTTP/1.1 400" + CRLF;
+				response = response + "Server: Multi-Threaded Web Server/1.0" + CRLF;
+				response = response + "Connection: close" + CRLF;
+				response = response + CRLF;
+				System.out.print(response);
+				System.out.println("----End of Response Frame----");
+				try {
+					this.output.writeBytes(response);
+					this.output.flush();
+				} catch (IOException ee) {
+					ee.printStackTrace();
+				}
+			}
+			catch (IOException e) {
 				e.printStackTrace();
 			}
 
