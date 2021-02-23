@@ -12,6 +12,8 @@
  */
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.logging.*;
@@ -55,6 +57,16 @@ public class WebServer extends Thread {
 			this.csocket = csocket_;
 		}
 		public void run(){
+			try {
+				InputStream input  = this.csocket.getInputStream();
+				OutputStream output = this.csocket.getOutputStream();
+				recHTTPReq();
+				sendHTTPResp();
+				sendObject();
+
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
 
 		}
 
