@@ -161,7 +161,23 @@ public class WebServer extends Thread {
 
 	}
 
-	
+	public class UserInputThread extends Thread {
+		String s;
+		public UserInputThread(){
+			s = null;
+		}
+
+		public void run(){
+
+			while(true){
+				s = userInput.nextLine();
+				if (s.equalsIgnoreCase("shutdown") || s.equalsIgnoreCase("exit") ) {
+					shutdownFlag = true;
+					break;
+				}
+			}
+		}
+	}
     /**
 	 * Main web server method.
 	 * The web server remains in listening mode 
@@ -170,7 +186,10 @@ public class WebServer extends Thread {
 	 *
      */
 	public void run(){
-
+		String s = null;
+		UserInputThread inputThread = new UserInputThread();
+		Thread userInputThread = new Thread(inputThread);
+		userInputThread.start();
 		while(!shutdownFlag){
 			try {
 				Socket csocket = ssocket.accept();
@@ -182,18 +201,10 @@ public class WebServer extends Thread {
 				}
 
 
-				String s = userInput.nextLine();
-				System.out.println(s);
-
-				// exit if message from client is "bye"
-				if (s.equalsIgnoreCase("shutdow") || s.equalsIgnoreCase("exit") ) {
-					shutdownFlag = true;
-					break;
-				}
-
 
 			} catch (IOException e) {
-				e.printStackTrace();
+				if(!e.getMessage().toString().equals("Accept timed out"))
+					e.printStackTrace();
 			}
 		}
 		if(shutdownFlag)
