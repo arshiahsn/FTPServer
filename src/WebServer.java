@@ -15,6 +15,9 @@ import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.file.Paths;
+import java.util.Scanner;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.logging.*;
 
 
@@ -23,6 +26,9 @@ public class WebServer extends Thread {
 	// global logger object, configures in the driver class
 	private static final Logger logger = Logger.getLogger("WebServer");
 	private ServerSocket ssocket;
+	private boolean shutdownFlag;
+	private Scanner userInput;
+	private ExecutorService exServ;
     /**
      * Constructor to initialize the web server
      * 
@@ -30,8 +36,12 @@ public class WebServer extends Thread {
      * 
      */
 	public WebServer(int port){
+		shutdownFlag = false;
 		try{
 			this.ssocket = new ServerSocket(port);
+			this.ssocket.setSoTimeout(1*1000);
+			this.userInput = new Scanner(System.in);
+			this.exServ = Executors.newFixedThreadPool(10);
 		}
 		catch(Exception e){
 			System.out.println(e.getMessage());
@@ -42,13 +52,13 @@ public class WebServer extends Thread {
 
 	public class WorkerThread extends Thread {
 		private Socket csocket;
-		DataInputStream input;
-		DataOutputStream output;
+		private DataInputStream input;
+		private DataOutputStream output;
 		public WorkerThread(Socket csocket_){
 			this.csocket = csocket_;
 			try{
-				input  = new DataInputStream(this.csocket.getInputStream());
-				output = new DataOutputStream(this.csocket.getOutputStream());
+				this.input  = new DataInputStream(this.csocket.getInputStream());
+				this.output = new DataOutputStream(this.csocket.getOutputStream());
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
@@ -65,7 +75,7 @@ public class WebServer extends Thread {
 			try{
 				while(num_byte_read!= -1)
 				{
-					csocket.getInputStream().read(http_request_header_bytes, off, 1);
+					this.input.read(http_request_header_bytes, off, 1);
 					off++;
 					String http_request_header_string = new String(http_request_header_bytes, 0, off, "US-ASCII");
 					if(http_request_header_string.contains("\r\n\r\n")){
@@ -140,6 +150,8 @@ public class WebServer extends Thread {
 
 				String request = getHTTPReq();
 				sendHTTPResp(request);
+				input.close();
+				output.close();
 
 			} catch (IOException e) {
 				e.printStackTrace();
@@ -159,17 +171,33 @@ public class WebServer extends Thread {
      */
 	public void run(){
 
-		while(true){
+		while(!shutdownFlag){
 			try {
 				Socket csocket = ssocket.accept();
-				WorkerThread wthread = new WorkerThread(csocket);
-				Thread workerThread = new Thread(wthread);
-				workerThread.start();
+				if(csocket != null){
+					WorkerThread wthread = new WorkerThread(csocket);
+					Thread workerThread = new Thread(wthread);
+					exServ.execute(workerThread);
+
+				}
+
+
+				String s = userInput.nextLine();
+				System.out.println(s);
+
+				// exit if message from client is "bye"
+				if (s.equalsIgnoreCase("shutdow") || s.equalsIgnoreCase("exit") ) {
+					shutdownFlag = true;
+					break;
+				}
+
+
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
 		}
-
+		if(shutdownFlag)
+			shutdown();
 
 	}
 	
@@ -178,6 +206,16 @@ public class WebServer extends Thread {
      * Signals the web server to shutdown.
 	 *
      */
-	//public void shutdown();
+	public void shutdown(){
+		try{
+			ssocket.close();
+			exServ.shutdown();
+			System.exit(1);
+		}
+		catch(Exception e){
+			System.out.println(e.getMessage());
+		}
+
+	}
 	
 }
