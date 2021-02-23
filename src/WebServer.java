@@ -82,7 +82,7 @@ public class WebServer extends Thread {
 
 		}
 
-		public void sendHTTPResp(String request){
+		public void sendHTTPResp(String request) throws IOException {
 			String lines[] = request.split("\n");
 			System.out.println(lines[0]);
 			String filename = lines[0].split(" ")[1];
@@ -93,7 +93,7 @@ public class WebServer extends Thread {
 
 			try {
 
-				FileInputStream file_input_stream = new FileInputStream(file);
+				FileInputStream fileInputStream = new FileInputStream(file);
 				System.out.println("\n----Start of Response Frame----");
 				response = "HTTP/1.1 200" + CRLF;
 				response = response + "Server: Multi-Threaded Web Server/1.0" + CRLF;
@@ -104,41 +104,33 @@ public class WebServer extends Thread {
 				System.out.print(response);
 				System.out.println("----End of Response Frame----");
 
-				int stream_char;
+				byte [] httpResponse = response.getBytes("US-ASCII");
+				this.output.writeBytes(String.valueOf(httpResponse));
+				this.output.flush();
+
+				int bytes = 0;
+				int bufferSize = 2048;
 				try { //Print contents of file to console
-					while ((stream_char = file_input_stream.read()) != -1){
-						response = response + (char)stream_char;
+					byte[] buffer = new byte[bufferSize];
+					while (((bytes=fileInputStream.read(buffer))!=-1)){
+						output.write(buffer,0, bytes);
+						output.flush();
+
 					}
-					System.out.println("----Contents of the requested file----");
-					System.out.print(response);
-					System.out.println("\n----Contents of the requested file----");
 				} catch (IOException e) {
 					System.out.println(e);
 				}
-			} catch(FileNotFoundException e) {
+			} catch(FileNotFoundException | UnsupportedEncodingException e) {
 				response = response.replace("200", "404"); //File not found
+				byte [] httpResponse = response.getBytes("US-ASCII");
+				this.output.writeBytes(String.valueOf(httpResponse));
+				this.output.flush();
+			} catch (IOException e) {
+				e.printStackTrace();
 			}
-			finally {
-				try {
-					byte [] httpResponse = response.getBytes("US-ASCII");
-					this.output.writeBytes(String.valueOf(httpResponse));
-					this.output.flush();
-				}
-				catch(Exception e) {
-					System.out.println(e.getMessage());
-				}
-
 
 
 		}
-
-
-		}
-
-		public void sendObject(){
-
-		}
-
 
 
 		public void run(){
@@ -146,7 +138,6 @@ public class WebServer extends Thread {
 
 				String request = getHTTPReq();
 				sendHTTPResp(request);
-				sendObject();
 
 			} catch (IOException e) {
 				e.printStackTrace();
@@ -185,6 +176,6 @@ public class WebServer extends Thread {
      * Signals the web server to shutdown.
 	 *
      */
-	public void shutdown();
+	//public void shutdown();
 	
 }
