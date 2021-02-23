@@ -97,15 +97,15 @@ public class WebServer extends Thread {
 				System.out.println("\n----Start of Response Frame----");
 				response = "HTTP/1.1 200" + CRLF;
 				response = response + "Server: Multi-Threaded Web Server/1.0" + CRLF;
-				response = response + "Content-Type: text/html" + CRLF;
-				response = response + "Connection: keep-alive" + CRLF;
+				response = response + "Content-Type: application/x-binary" + CRLF;
+				response = response + "Connection: close" + CRLF;
 				response = response + "Content-Length: " + file.length() + CRLF;
 				response = response + CRLF;
 				System.out.print(response);
 				System.out.println("----End of Response Frame----");
 
 				byte [] httpResponse = response.getBytes("US-ASCII");
-				this.output.writeBytes(String.valueOf(httpResponse));
+				this.output.writeBytes(response);
 				this.output.flush();
 
 				int bytes = 0;
@@ -117,13 +117,15 @@ public class WebServer extends Thread {
 						output.flush();
 
 					}
+					this.output.writeBytes(CRLF);
+					this.output.flush();
 				} catch (IOException e) {
 					System.out.println(e);
 				}
 			} catch(FileNotFoundException | UnsupportedEncodingException e) {
 				response = response.replace("200", "404"); //File not found
-				byte [] httpResponse = response.getBytes("US-ASCII");
-				this.output.writeBytes(String.valueOf(httpResponse));
+				//byte [] httpResponse = response.getBytes("US-ASCII");
+				this.output.writeBytes(response);
 				this.output.flush();
 			} catch (IOException e) {
 				e.printStackTrace();

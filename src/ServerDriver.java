@@ -48,7 +48,7 @@ public class ServerDriver {
             // shutdown the server
             System.out.println();
             System.out.println("server is shutting down...");
-            server.shutdown();
+            //server.shutdown();
             server.join(TERM_WAIT_TIME);
             System.out.println("server stopped");
         } catch (InterruptedException e) {
