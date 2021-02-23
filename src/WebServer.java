@@ -15,6 +15,9 @@ import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.file.Paths;
+import java.util.Scanner;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.logging.*;
 
 
@@ -23,6 +26,9 @@ public class WebServer extends Thread {
 	// global logger object, configures in the driver class
 	private static final Logger logger = Logger.getLogger("WebServer");
 	private ServerSocket ssocket;
+	private boolean shutdownFlag;
+	private Scanner userInput;
+	private ExecutorService exServ;
     /**
      * Constructor to initialize the web server
      * 
@@ -30,8 +36,12 @@ public class WebServer extends Thread {
      * 
      */
 	public WebServer(int port){
+		shutdownFlag = false;
 		try{
 			this.ssocket = new ServerSocket(port);
+			this.ssocket.setSoTimeout(1*1000);
+			this.userInput = new Scanner(System.in);
+			this.exServ = Executors.newFixedThreadPool(10);
 		}
 		catch(Exception e){
 			System.out.println(e.getMessage());
@@ -42,13 +52,13 @@ public class WebServer extends Thread {
 
 	public class WorkerThread extends Thread {
 		private Socket csocket;
-		DataInputStream input;
-		DataOutputStream output;
+		private DataInputStream input;
+		private DataOutputStream output;
 		public WorkerThread(Socket csocket_){
 			this.csocket = csocket_;
 			try{
-				input  = new DataInputStream(this.csocket.getInputStream());
-				output = new DataOutputStream(this.csocket.getOutputStream());
+				this.input  = new DataInputStream(this.csocket.getInputStream());
+				this.output = new DataOutputStream(this.csocket.getOutputStream());
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
@@ -65,7 +75,7 @@ public class WebServer extends Thread {
 			try{
 				while(num_byte_read!= -1)
 				{
-					csocket.getInputStream().read(http_request_header_bytes, off, 1);
+					this.input.read(http_request_header_bytes, off, 1);
 					off++;
 					String http_request_header_string = new String(http_request_header_bytes, 0, off, "US-ASCII");
 					if(http_request_header_string.contains("\r\n\r\n")){
@@ -82,7 +92,19 @@ public class WebServer extends Thread {
 
 		}
 
-		public void sendHTTPResp(String request) throws IOException {
+		public boolean validateReq(String req){
+			String lines[] = req.split("\n");
+			if(!lines[0].contains("GET /") || !lines[0].contains("HTTP/"))
+				return false;
+			if(!lines[1].contains("Host:"))
+				return false;
+			if(!lines[2].contains("Connection:"))
+				return false;
+
+			return true;
+		}
+
+		public void sendHTTPResp(String request)  {
 			String lines[] = request.split("\n");
 			System.out.println(lines[0]);
 			String filename = lines[0].split(" ")[1];
@@ -122,12 +144,38 @@ public class WebServer extends Thread {
 				} catch (IOException e) {
 					System.out.println(e);
 				}
-			} catch(FileNotFoundException | UnsupportedEncodingException e) {
-				response = response.replace("200", "404"); //File not found
-				//byte [] httpResponse = response.getBytes("US-ASCII");
-				this.output.writeBytes(response);
-				this.output.flush();
-			} catch (IOException e) {
+			} catch(FileNotFoundException e) {
+				System.out.println("\n----Start of Response Frame----");
+				response = "HTTP/1.1 404" + CRLF;
+				response = response + "Server: Multi-Threaded Web Server/1.0" + CRLF;
+				response = response + "Connection: close" + CRLF;
+				response = response + CRLF;
+				System.out.print(response);
+				System.out.println("----End of Response Frame----");
+				try {
+					this.output.writeBytes(response);
+					this.output.flush();
+				} catch (IOException ee) {
+					ee.printStackTrace();
+				}
+
+			}
+			catch(UnsupportedEncodingException e){
+				System.out.println("\n----Start of Response Frame----");
+				response = "HTTP/1.1 400" + CRLF;
+				response = response + "Server: Multi-Threaded Web Server/1.0" + CRLF;
+				response = response + "Connection: close" + CRLF;
+				response = response + CRLF;
+				System.out.print(response);
+				System.out.println("----End of Response Frame----");
+				try {
+					this.output.writeBytes(response);
+					this.output.flush();
+				} catch (IOException ee) {
+					ee.printStackTrace();
+				}
+			}
+			catch (IOException e) {
 				e.printStackTrace();
 			}
 
@@ -140,6 +188,8 @@ public class WebServer extends Thread {
 
 				String request = getHTTPReq();
 				sendHTTPResp(request);
+				input.close();
+				output.close();
 
 			} catch (IOException e) {
 				e.printStackTrace();
@@ -149,7 +199,23 @@ public class WebServer extends Thread {
 
 	}
 
-	
+	public class UserInputThread extends Thread {
+		String s;
+		public UserInputThread(){
+			s = null;
+		}
+
+		public void run(){
+
+			while(true){
+				s = userInput.nextLine();
+				if (s.equalsIgnoreCase("shutdown") || s.equalsIgnoreCase("exit") ) {
+					shutdownFlag = true;
+					break;
+				}
+			}
+		}
+	}
     /**
 	 * Main web server method.
 	 * The web server remains in listening mode 
@@ -158,18 +224,29 @@ public class WebServer extends Thread {
 	 *
      */
 	public void run(){
-
-		while(true){
+		String s = null;
+		UserInputThread inputThread = new UserInputThread();
+		Thread userInputThread = new Thread(inputThread);
+		userInputThread.start();
+		while(!shutdownFlag){
 			try {
 				Socket csocket = ssocket.accept();
-				WorkerThread wthread = new WorkerThread(csocket);
-				Thread workerThread = new Thread(wthread);
-				workerThread.start();
+				if(csocket != null){
+					WorkerThread wthread = new WorkerThread(csocket);
+					Thread workerThread = new Thread(wthread);
+					exServ.execute(workerThread);
+
+				}
+
+
+
 			} catch (IOException e) {
-				e.printStackTrace();
+				if(!e.getMessage().toString().equals("Accept timed out"))
+					e.printStackTrace();
 			}
 		}
-
+		if(shutdownFlag)
+			shutdown();
 
 	}
 	
@@ -178,6 +255,16 @@ public class WebServer extends Thread {
      * Signals the web server to shutdown.
 	 *
      */
-	//public void shutdown();
+	public void shutdown(){
+		try{
+			ssocket.close();
+			exServ.shutdown();
+			System.exit(1);
+		}
+		catch(Exception e){
+			System.out.println(e.getMessage());
+		}
+
+	}
 	
 }
