@@ -92,19 +92,19 @@ public class WebServer extends Thread {
 
 		}
 
-		public boolean validateReq(String req){
+		public void validateReq(String req) throws UnsupportedEncodingException {
 			String lines[] = req.split("\n");
 			if(!lines[0].contains("GET /") || !lines[0].contains("HTTP/"))
-				return false;
+				throw new UnsupportedEncodingException ();
 			if(!lines[1].contains("Host:"))
-				return false;
+				throw new UnsupportedEncodingException ();
 			if(!lines[2].contains("Connection:"))
-				return false;
+				throw new UnsupportedEncodingException ();
 
-			return true;
+
 		}
 
-		public void sendHTTPResp(String request)  {
+		public void sendHTTPResp(String request){
 			String lines[] = request.split("\n");
 			System.out.println(lines[0]);
 			String filename = lines[0].split(" ")[1];
@@ -114,7 +114,7 @@ public class WebServer extends Thread {
 			String CRLF = " \r\n";
 
 			try {
-
+				validateReq(request);
 				FileInputStream fileInputStream = new FileInputStream(file);
 				System.out.println("\n----Start of Response Frame----");
 				response = "HTTP/1.1 200" + CRLF;
@@ -237,8 +237,6 @@ public class WebServer extends Thread {
 					exServ.execute(workerThread);
 
 				}
-
-
 
 			} catch (IOException e) {
 				if(!e.getMessage().toString().equals("Accept timed out"))
