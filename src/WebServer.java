@@ -14,10 +14,10 @@
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.file.Paths;
 import java.util.Scanner;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
 import java.util.logging.*;
 
 
@@ -28,7 +28,7 @@ public class WebServer extends Thread {
 	private ServerSocket ssocket;
 	private boolean shutdownFlag;
 	private Scanner userInput;
-	private ExecutorService exServ;
+	ThreadPoolExecutor exServ = (ThreadPoolExecutor) Executors.newFixedThreadPool(10);
     /**
      * Constructor to initialize the web server
      * 
@@ -41,7 +41,6 @@ public class WebServer extends Thread {
 			this.ssocket = new ServerSocket(port);
 			this.ssocket.setSoTimeout(1*1000);
 			this.userInput = new Scanner(System.in);
-			this.exServ = Executors.newFixedThreadPool(10);
 		}
 		catch(Exception e){
 			System.out.println(e.getMessage());
@@ -86,19 +85,22 @@ public class WebServer extends Thread {
 			}
 
 			catch (IOException e){
-				//Exception handling – file download error
+				e.printStackTrace();
+			}
+			catch (StringIndexOutOfBoundsException e){
+				logger.log(Level.ALL,e.getMessage());
+			}
+			catch (NullPointerException e){
+				logger.log(Level.ALL,e.getMessage());
 			}
 			return null;
-
 		}
 
 		public void validateReq(String req) throws UnsupportedEncodingException {
 			String lines[] = req.split("\n");
-			if(!lines[0].contains("GET /") || !lines[0].contains("HTTP/"))
+			if(!req.contains("GET /") || !lines[0].contains("HTTP/"))
 				throw new UnsupportedEncodingException ();
-			if(!lines[1].contains("Host:"))
-				throw new UnsupportedEncodingException ();
-			if(!lines[2].contains("Connection:"))
+			if(!req.contains("Host:"))
 				throw new UnsupportedEncodingException ();
 
 
@@ -106,7 +108,6 @@ public class WebServer extends Thread {
 
 		public void sendHTTPResp(String request){
 			String lines[] = request.split("\n");
-			System.out.println(lines[0]);
 			String filename = lines[0].split(" ")[1];
 			String source = Paths.get("").toAbsolutePath().toString();
 			File file = new File(source + filename);
@@ -114,9 +115,10 @@ public class WebServer extends Thread {
 			String CRLF = " \r\n";
 
 			try {
+				System.out.println(request);
 				validateReq(request);
 				FileInputStream fileInputStream = new FileInputStream(file);
-				System.out.println("\n----Start of Response Frame----");
+				//System.out.println("\n----Start of Response Frame----");
 				response = "HTTP/1.1 200" + CRLF;
 				response = response + "Server: Multi-Threaded Web Server/1.0" + CRLF;
 				response = response + "Content-Type: application/x-binary" + CRLF;
@@ -124,7 +126,7 @@ public class WebServer extends Thread {
 				response = response + "Content-Length: " + file.length() + CRLF;
 				response = response + CRLF;
 				System.out.print(response);
-				System.out.println("----End of Response Frame----");
+				//System.out.println("----End of Response Frame----");
 
 				byte [] httpResponse = response.getBytes("US-ASCII");
 				this.output.writeBytes(response);
@@ -145,13 +147,13 @@ public class WebServer extends Thread {
 					System.out.println(e);
 				}
 			} catch(FileNotFoundException e) {
-				System.out.println("\n----Start of Response Frame----");
+				//System.out.println("\n----Start of Response Frame----");
 				response = "HTTP/1.1 404" + CRLF;
 				response = response + "Server: Multi-Threaded Web Server/1.0" + CRLF;
 				response = response + "Connection: close" + CRLF;
 				response = response + CRLF;
 				System.out.print(response);
-				System.out.println("----End of Response Frame----");
+				//System.out.println("----End of Response Frame----");
 				try {
 					this.output.writeBytes(response);
 					this.output.flush();
@@ -159,15 +161,16 @@ public class WebServer extends Thread {
 					ee.printStackTrace();
 				}
 
+
 			}
 			catch(UnsupportedEncodingException e){
-				System.out.println("\n----Start of Response Frame----");
+				//System.out.println("\n----Start of Response Frame----");
 				response = "HTTP/1.1 400" + CRLF;
 				response = response + "Server: Multi-Threaded Web Server/1.0" + CRLF;
 				response = response + "Connection: close" + CRLF;
 				response = response + CRLF;
 				System.out.print(response);
-				System.out.println("----End of Response Frame----");
+				//System.out.println("----End of Response Frame----");
 				try {
 					this.output.writeBytes(response);
 					this.output.flush();
@@ -199,23 +202,7 @@ public class WebServer extends Thread {
 
 	}
 
-	public class UserInputThread extends Thread {
-		String s;
-		public UserInputThread(){
-			s = null;
-		}
 
-		public void run(){
-
-			while(true){
-				s = userInput.nextLine();
-				if (s.equalsIgnoreCase("shutdown") || s.equalsIgnoreCase("exit") ) {
-					shutdownFlag = true;
-					break;
-				}
-			}
-		}
-	}
     /**
 	 * Main web server method.
 	 * The web server remains in listening mode 
@@ -224,27 +211,32 @@ public class WebServer extends Thread {
 	 *
      */
 	public void run(){
-		String s = null;
-		UserInputThread inputThread = new UserInputThread();
-		Thread userInputThread = new Thread(inputThread);
-		userInputThread.start();
 		while(!shutdownFlag){
 			try {
 				Socket csocket = ssocket.accept();
 				if(csocket != null){
+					System.out.println(csocket.getInetAddress()+":"+csocket.getPort());
 					WorkerThread wthread = new WorkerThread(csocket);
 					Thread workerThread = new Thread(wthread);
 					exServ.execute(workerThread);
 
 				}
 
-			} catch (IOException e) {
+			} catch (IOException e ) {
 				if(!e.getMessage().toString().equals("Accept timed out"))
 					e.printStackTrace();
 			}
 		}
-		if(shutdownFlag)
-			shutdown();
+		try{
+			exServ.shutdown();
+			exServ.awaitTermination(5, TimeUnit.SECONDS);
+			ssocket.close();
+			exServ.shutdownNow();
+
+		}
+		catch (Exception e){
+			e.printStackTrace();
+		}
 
 	}
 	
@@ -255,9 +247,7 @@ public class WebServer extends Thread {
      */
 	public void shutdown(){
 		try{
-			ssocket.close();
-			exServ.shutdown();
-			System.exit(1);
+		    shutdownFlag = true;
 		}
 		catch(Exception e){
 			System.out.println(e.getMessage());
